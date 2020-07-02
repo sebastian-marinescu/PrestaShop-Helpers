@@ -1,2 +1,2 @@
 # PrestaShop-Helpers
-Some bash-script helping with PrestaShop-Migrations
+Some bash-scripts helping with PrestaShop-Migrations
