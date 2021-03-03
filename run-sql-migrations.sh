@@ -5,7 +5,7 @@
 LOCAL_DIRECTORY=$(pwd)/sql_upgrades
 
 OLD_PS_VERSION=1.7.2.4
-NEW_PS_VERSION=1.7.6.5
+NEW_PS_VERSION=1.7.7.2
 
 PS_CONFIG_FILE=../app/config/parameters.php
 
