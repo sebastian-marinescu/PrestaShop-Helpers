@@ -1,8 +1,8 @@
 #!/bin/bash
 
 LOCAL_DIRECTORY=$(pwd)/sql_upgrades
-REMOTE_DIRECTORY=install-dev/upgrade/sql/
-REMOTE_REPOSITORY="git@github.com:PrestaShop/PrestaShop.git"
+REMOTE_DIRECTORY=upgrade/sql/
+REMOTE_REPOSITORY="git@github.com:PrestaShop/autoupgrade.git"
 
 PS_CONFIG_FILE=../app/config/parameters.php
 PS_DB_PREFIX=$(awk -F"'" '/database_prefix/{print $4}' ${PS_CONFIG_FILE})
@@ -23,7 +23,7 @@ function git_sparse_clone() {
     echo "$i" >> .git/info/sparse-checkout
   done
 
-  git pull origin develop
+  git pull origin dev
 }
 
 git_sparse_clone "${REMOTE_REPOSITORY}" "${LOCAL_DIRECTORY}" "${REMOTE_DIRECTORY}"
@@ -33,7 +33,7 @@ cp ${REMOTE_DIRECTORY}*.* ${LOCAL_DIRECTORY}
 
 echo
 echo "Replacing db-prefix"
-sed -i "s/PREFIX_/${PS_DB_PREFIX}/g" *.sql
+sed -i '' "s/PREFIX_/${PS_DB_PREFIX}/g" *.sql
 
 echo
 echo "Removing unnecessary directories"
