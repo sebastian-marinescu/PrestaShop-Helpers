@@ -2,10 +2,12 @@
 
 # Declare variables
 
+## TODO: Set these vars in an .env and get them here
+
 LOCAL_DIRECTORY=$(pwd)/sql_upgrades
 
-OLD_PS_VERSION=1.7.2.4
-NEW_PS_VERSION=1.7.7.2
+OLD_PS_VERSION=1.7.8.11
+NEW_PS_VERSION=8.1.7
 
 PS_CONFIG_FILE=../app/config/parameters.php
 
@@ -20,6 +22,24 @@ newMajor=${newSemver[0]}
 newMinor=${newSemver[1]}
 newPatch=${newSemver[2]}
 newLabel=${newSemver[3]}
+
+echo
+echo "---"
+echo "oldMajor: $oldMajor"
+echo "oldMinor: $oldMinor"
+echo "oldPatch: $oldPatch"
+echo "oldLabel: $oldLabel"
+
+echo
+echo "---"
+echo "newMajor: $newMajor"
+echo "newMinor: $newMinor"
+echo "newPatch: $newPatch"
+echo "newLabel: $newLabel"
+
+echo
+echo "--- Looking for relevant upgrade scripts"
+echo
 
 migrationScripts=()
 
@@ -43,6 +63,8 @@ for f in ${LOCAL_DIRECTORY}/*.sql; do
                     continue
                 fi
 
+		# TODO: Check if Label exists or not
+
                 if [[ ${currentPatch} -eq ${oldPatch} && ${currentLabel} -lt ${oldLabel} ]];then
                     continue
                 fi
@@ -52,6 +74,11 @@ for f in ${LOCAL_DIRECTORY}/*.sql; do
 
             fi
         fi
+	
+	if [[ ${currentMajor} -gt ${oldMajor} ]];then	
+	        echo "${fileName} -- is in patch range"
+        	migrationScripts+=( ${f} )
+	fi
     fi
 done
 
