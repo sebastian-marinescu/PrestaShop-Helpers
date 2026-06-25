@@ -87,7 +87,7 @@ fi
 get_param() {
     local key=$1
     local file=$2
-    awk -F"'" "/$key/{print \$4}" "$file"
+    awk -F"'" "/^[[:space:]]*'$key'[[:space:]]*=>/{print \$4; exit}" "$file"
 }
 
 stagingDbHost=$(get_param "database_host" "$STAGING_PARAMS")
@@ -122,6 +122,11 @@ if [ "$AUTO_PRESERVE_STAGING_ONLY_MODULES" = true ]; then
             fi
         fi
     done
+fi
+
+# Always preserve app/config/parameters.php since it is versioned in git but contains local database configurations
+if [ -f "${STAGING_DIR_PHYS}/app/config/parameters.php" ]; then
+    MODULES_TO_PRESERVE="app/config/parameters.php ${MODULES_TO_PRESERVE}"
 fi
 
 # Add manual preserve paths
