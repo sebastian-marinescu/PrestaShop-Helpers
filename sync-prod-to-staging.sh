@@ -213,10 +213,12 @@ fi
 # 6. Database Dump & Import
 echo -e "\n${BLUE}=== Synchronizing Database... ===${NC}"
 DATE=$(date "+%Y%m%d_%H%M%S")
-STAGING_BACKUP_FILE="${STAGING_DIR_PHYS}/helper/backup_staging_before_sync_${DATE}.sql"
+STAGING_BACKUP_DIR="${STAGING_DIR_PHYS}/helper/backups"
+STAGING_BACKUP_FILE="${STAGING_BACKUP_DIR}/backup_staging_before_sync_${DATE}.sql"
 TEMP_PROD_DUMP="/tmp/prod_dump_${DATE}.sql"
 
 if [ "$DRY_RUN" = true ]; then
+    echo "[Dry-Run] Would ensure backup directory exists: ${STAGING_BACKUP_DIR}"
     echo "[Dry-Run] Would backup Staging database to: ${STAGING_BACKUP_FILE}"
     echo "[Dry-Run] Would dump Production database to: ${TEMP_PROD_DUMP}"
     echo "[Dry-Run] Would import ${TEMP_PROD_DUMP} into Staging database (${stagingDbName})"
@@ -224,22 +226,40 @@ if [ "$DRY_RUN" = true ]; then
     echo "  UPDATE ${stagingDbPrefix}shop_url SET domain = '${STAGING_DOMAIN}', domain_ssl = '${STAGING_DOMAIN}';"
     echo "  UPDATE ${stagingDbPrefix}configuration SET value = '${STAGING_DOMAIN}' WHERE name = 'PS_SHOP_DOMAIN';"
     echo "  UPDATE ${stagingDbPrefix}configuration SET value = '${STAGING_DOMAIN}' WHERE name = 'PS_SHOP_DOMAIN_SSL';"
+    echo "[Dry-Run] Would run backup cleanup (keeping last 3 backups, deleting older than 7 days)"
 else
+    # Ensure backup directory exists
+    mkdir -p "$STAGING_BACKUP_DIR"
+
     # A. Backup Staging DB
     echo "Creating backup of current Staging database..."
     mysqldump -h"${stagingDbHost}" -u"${stagingDbUser}" -p"${stagingDbPass}" "${stagingDbName}" > "$STAGING_BACKUP_FILE"
     echo -e "${GREEN}[Ok] Staging database backup saved to: ${STAGING_BACKUP_FILE}${NC}"
 
-    # B. Dump Production DB
+    # B. Cleanup old backups (keep at least the 3 newest backups, delete older than 7 days)
+    echo "Cleaning up old staging database backups..."
+    backups=($(ls -t "${STAGING_BACKUP_DIR}"/backup_staging_before_sync_*.sql 2>/dev/null))
+    
+    if [ ${#backups[@]} -gt 3 ]; then
+        for ((i=3; i<${#backups[@]}; i++)); do
+            file="${backups[$i]}"
+            if [ -n "$(find "$file" -mtime +7 2>/dev/null)" ]; then
+                echo "Deleting old staging database backup: $(basename "$file")"
+                rm -f "$file"
+            fi
+        done
+    fi
+
+    # C. Dump Production DB
     echo "Dumping Production database..."
     mysqldump -h"${prodDbHost}" -u"${prodDbUser}" -p"${prodDbPass}" "${prodDbName}" > "$TEMP_PROD_DUMP"
 
-    # C. Import into Staging DB
+    # D. Import into Staging DB
     echo "Importing Production database dump into Staging..."
     mysql -h"${stagingDbHost}" -u"${stagingDbUser}" -p"${stagingDbPass}" "${stagingDbName}" < "$TEMP_PROD_DUMP"
     rm -f "$TEMP_PROD_DUMP"
 
-    # D. Adjust shop URLs and domains in Staging
+    # E. Adjust shop URLs and domains in Staging
     echo "Adjusting Staging URLs in database..."
     SQL_QUERIES="
         UPDATE ${stagingDbPrefix}shop_url SET domain = '${STAGING_DOMAIN}', domain_ssl = '${STAGING_DOMAIN}';

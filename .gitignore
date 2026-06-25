@@ -1,3 +1,4 @@
 .dbconf
 sql_upgrades
 .env
+backups/
