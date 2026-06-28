@@ -15,6 +15,9 @@ This guide describes how to configure and run the `sync-prod-to-staging.sh` scri
 
 ## Instructions for Use on the Server
 
+> [!WARNING]
+> **Always run this script from the Staging helper directory** (`/home/www/staging/helper/`). Never run it from the Production helper directory, as the script loads the configuration and executes operations relative to its physical location.
+
 ### Step 1: Copy and Edit the Configuration
 Connect via SSH to the server, navigate to this folder, and copy the template config:
 ```bash
