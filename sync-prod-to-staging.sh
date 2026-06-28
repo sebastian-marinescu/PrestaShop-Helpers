@@ -342,8 +342,17 @@ if [ "$DRY_RUN" = true ]; then
     echo "[Dry-Run] Would hit reset endpoint: https://${STAGING_DOMAIN}/helper/reset_opcache.php"
 else
     echo "Clearing PrestaShop Symfony cache..."
-    rm -rf "${STAGING_DIR_PHYS}/var/cache/prod"/*
-    rm -rf "${STAGING_DIR_PHYS}/var/cache/dev"/*
+    # Fast rename & background delete trick to avoid waiting for thousands of file deletions
+    for env in prod dev; do
+        cache_path="${STAGING_DIR_PHYS}/var/cache/${env}"
+        if [ -d "$cache_path" ]; then
+            old_cache_path="${cache_path}_old_$(date +%s)"
+            mv "$cache_path" "$old_cache_path" 2>/dev/null
+            mkdir -p "$cache_path"
+            chmod 775 "$cache_path" 2>/dev/null
+            rm -rf "$old_cache_path" &
+        fi
+    done
     
     echo "Resetting PHP OPcache..."
     # Make curl call to trigger web-server OPcache reset (in case CLI doesn't clear FPM)
