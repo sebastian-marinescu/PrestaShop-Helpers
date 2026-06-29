@@ -323,15 +323,11 @@ if [ "$DRY_RUN" = true ]; then
 else
     # A. Adapt PrestaShop HTTP_HOST rewrite conditions in root .htaccess so product/category rules match on Staging
     if [ -f "$HTACCESS_FILE" ]; then
-        sed -i "s/RewriteCond %{HTTP_HOST} ^${PROD_DOMAIN}\$/RewriteCond %{HTTP_HOST} ^(${STAGING_DOMAIN}|${PROD_DOMAIN})\$/g" "$HTACCESS_FILE"
+        # Use portable sed with .bak extension to work seamlessly on both GNU and BSD/FreeBSD sed
+        sed -i.bak "s/RewriteCond %{HTTP_HOST} ^${PROD_DOMAIN}\$/RewriteCond %{HTTP_HOST} ^(${STAGING_DOMAIN}|${PROD_DOMAIN})\$/g" "$HTACCESS_FILE" && rm -f "$HTACCESS_FILE.bak"
         
-        # Remove legacy single-rule fallback blocks if present from earlier versions
-        if grep -q "Staging Image Fallback Start" "$HTACCESS_FILE"; then
-            sed -i '/# Staging Image Fallback Start/,/# Staging Image Fallback End/d' "$HTACCESS_FILE"
-        fi
-        if grep -q "Staging Clean URL Image Fallback Start" "$HTACCESS_FILE"; then
-            sed -i '/# Staging Clean URL Image Fallback Start/,/# Staging Clean URL Image Fallback End/d' "$HTACCESS_FILE"
-        fi
+        # Remove legacy fallback blocks cleanly using portable awk
+        awk '/# Staging Image Fallback Start/{p=1; next} /# Staging Image Fallback End/{p=0; next} /# Staging Clean URL Image Fallback Start/{p=1; next} /# Staging Clean URL Image Fallback End/{p=0; next} !p' "$HTACCESS_FILE" > "$HTACCESS_FILE.tmp" && mv "$HTACCESS_FILE.tmp" "$HTACCESS_FILE"
 
         # Inject clean URL fallback in root .htaccess using full %{REQUEST_URI} to preserve exact filenames
         (
