@@ -8,7 +8,7 @@ This guide describes how to configure and run the `sync-prod-to-staging.sh` scri
 3. **Submodule Protection**: Leaves submodules completely untouched (preserves any local development inside submodules).
 4. **Git Reset & Pull**: Force-resets all tracked files on Staging to match the Production `master` branch.
 5. **Database Replication**: Backs up the old Staging database (saved in `helper/backups/`), dumps the Production database, imports it, and automatically updates the PrestaShop shop URLs and domains (`ps_shop_url` and `ps_configuration`) to match Staging. Automatically keeps the 3 newest backups on Staging and cleans up older ones that are older than 7 days.
-6. **Zero-Transfer Image Fallback**: Injects Apache Rewrite rules in Staging's `.htaccess`. If an image does not exist locally on Staging, the server redirects the browser to Production's image url (`https://betz-designmoebel.ch/img/...`) on-the-fly. This saves gigabytes of transfer and disk space.
+6. **Zero-Transfer Image Fallback**: Automatically updates `.htaccess` on Staging to rewrite domain checks (`staging.betz-designmoebel.ch`), support clean product URLs (`235689-product...jpg`), and injects fallback redirects in `img/.htaccess`. Any missing product or CMS image automatically redirects on-the-fly to Production (`https://betz-designmoebel.ch/...`) without 403 Forbidden errors, saving gigabytes of disk space and sync time.
 7. **Cache Cleansing**: Deletes PrestaShop's Symfony cache and triggers a PHP OPcache reset via HTTP curl.
 
 ---
