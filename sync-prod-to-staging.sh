@@ -259,7 +259,7 @@ else
         
         # Pass 2: Dump data for all tables EXCEPT logs & statistics
         IGNORE_ARGS=""
-        for tbl in log mail connections connections_page connections_source guest pagenotfound statsearch; do
+        for tbl in log mail connections connections_page connections_source guest pagenotfound statsearch report404 gdpr_activity_log; do
             IGNORE_ARGS="${IGNORE_ARGS} --ignore-table=${prodDbName}.${prodDbPrefix}${tbl}"
         done
         mysqldump -h"${prodDbHost}" -u"${prodDbUser}" -p"${prodDbPass}" --no-create-info ${IGNORE_ARGS} "${prodDbName}" >> "$TEMP_PROD_DUMP"
