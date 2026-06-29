@@ -305,52 +305,61 @@ IMG_HTACCESS_FILE="${STAGING_DIR_PHYS}/img/.htaccess"
 if [ "$DRY_RUN" = true ]; then
     echo "[Dry-Run] Would adapt HTTP_HOST rules in ${HTACCESS_FILE} from ${PROD_DOMAIN} to ${STAGING_DOMAIN}"
     echo "[Dry-Run] Would inject product image clean URL fallback rules into ${HTACCESS_FILE}"
-    echo "[Dry-Run] Would inject missing image fallback rules into ${IMG_HTACCESS_FILE}"
+    echo "[Dry-Run] Would update permissions and inject missing image fallback rules into ${IMG_HTACCESS_FILE}"
 else
     # A. Adapt PrestaShop HTTP_HOST rewrite conditions in root .htaccess so product/category rules match on Staging
     if [ -f "$HTACCESS_FILE" ]; then
         sed -i "s/RewriteCond %{HTTP_HOST} ^${PROD_DOMAIN}\$/RewriteCond %{HTTP_HOST} ^(${STAGING_DOMAIN}|${PROD_DOMAIN})\$/g" "$HTACCESS_FILE"
         
-        # Remove legacy single-rule fallback block if present from earlier versions
+        # Remove legacy single-rule fallback blocks if present from earlier versions
         if grep -q "Staging Image Fallback Start" "$HTACCESS_FILE"; then
             sed -i '/# Staging Image Fallback Start/,/# Staging Image Fallback End/d' "$HTACCESS_FILE"
         fi
-
-        # Inject clean URL fallback in root .htaccess if not present
-        if ! grep -q "Staging Clean URL Image Fallback Start" "$HTACCESS_FILE"; then
-            (
-                echo "# Staging Clean URL Image Fallback Start"
-                echo "<IfModule mod_rewrite.c>"
-                echo "  RewriteEngine On"
-                echo "  RewriteCond %{REQUEST_FILENAME} !-f"
-                echo "  RewriteRule ^([0-9]+(?:-[a-zA-Z0-9_-]*)?)/.+\\.(jpe?g|webp|png|avif|gif)\$ https://${PROD_DOMAIN}/\$1 [QSA,L,R=302]"
-                echo "  RewriteCond %{REQUEST_FILENAME} !-f"
-                echo "  RewriteRule ^c/([0-9]+|[a-zA-Z0-9_-]+)/.+\\.(jpe?g|webp|png|avif|gif)\$ https://${PROD_DOMAIN}/c/\$1 [QSA,L,R=302]"
-                echo "</IfModule>"
-                echo "# Staging Clean URL Image Fallback End"
-                echo ""
-                cat "$HTACCESS_FILE"
-            ) > "${HTACCESS_FILE}.tmp" && mv "${HTACCESS_FILE}.tmp" "$HTACCESS_FILE"
+        if grep -q "Staging Clean URL Image Fallback Start" "$HTACCESS_FILE"; then
+            sed -i '/# Staging Clean URL Image Fallback Start/,/# Staging Clean URL Image Fallback End/d' "$HTACCESS_FILE"
         fi
+
+        # Inject clean URL fallback in root .htaccess using full %{REQUEST_URI} to preserve exact filenames
+        (
+            echo "# Staging Clean URL Image Fallback Start"
+            echo "<IfModule mod_rewrite.c>"
+            echo "  RewriteEngine On"
+            echo "  RewriteCond %{REQUEST_FILENAME} !-f"
+            echo "  RewriteRule ^[0-9]+.*\\.(jpe?g|webp|png|avif|gif)\$ https://${PROD_DOMAIN}%{REQUEST_URI} [QSA,L,R=302]"
+            echo "  RewriteCond %{REQUEST_FILENAME} !-f"
+            echo "  RewriteRule ^c/.*\\.(jpe?g|webp|png|avif|gif)\$ https://${PROD_DOMAIN}%{REQUEST_URI} [QSA,L,R=302]"
+            echo "</IfModule>"
+            echo "# Staging Clean URL Image Fallback End"
+            echo ""
+            cat "$HTACCESS_FILE"
+        ) > "${HTACCESS_FILE}.tmp" && mv "${HTACCESS_FILE}.tmp" "$HTACCESS_FILE"
         echo -e "${GREEN}[Ok] Root .htaccess rules updated for Staging domain & clean URLs.${NC}"
     fi
 
-    # B. Inject fallback in img/.htaccess to prevent 403 Forbidden on missing CMS/product image files
+    # B. Update img/.htaccess to grant access and redirect missing images without 403 Forbidden errors
     if [ -f "$IMG_HTACCESS_FILE" ]; then
-        if ! grep -q "Staging Image Directory Fallback Start" "$IMG_HTACCESS_FILE"; then
-            (
-                echo "# Staging Image Directory Fallback Start"
-                echo "<IfModule mod_rewrite.c>"
-                echo "  RewriteEngine On"
-                echo "  RewriteCond %{REQUEST_FILENAME} !-f"
-                echo "  RewriteRule ^(.*)\$ https://${PROD_DOMAIN}/img/\$1 [QSA,L,R=302]"
-                echo "</IfModule>"
-                echo "# Staging Image Directory Fallback End"
-                echo ""
-                cat "$IMG_HTACCESS_FILE"
-            ) > "${IMG_HTACCESS_FILE}.tmp" && mv "${IMG_HTACCESS_FILE}.tmp" "$IMG_HTACCESS_FILE"
-            echo -e "${GREEN}[Ok] img/.htaccess fallback injected successfully.${NC}"
-        fi
+        # Create an updated img/.htaccess that allows access and handles missing files
+        cat <<EOT > "$IMG_HTACCESS_FILE"
+# Staging Image Directory Fallback Start
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteRule ^(.*)\$ https://${PROD_DOMAIN}/img/\$1 [QSA,L,R=302]
+</IfModule>
+# Staging Image Directory Fallback End
+
+# Apache 2.2
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Allow from all
+</IfModule>
+
+# Apache 2.4
+<IfModule mod_authz_core.c>
+    Require all granted
+</IfModule>
+EOT
+        echo -e "${GREEN}[Ok] img/.htaccess permissions & fallback updated successfully.${NC}"
     fi
 fi
 
