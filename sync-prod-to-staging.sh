@@ -100,9 +100,10 @@ prodDbHost=$(get_param "database_host" "$PROD_PARAMS")
 prodDbName=$(get_param "database_name" "$PROD_PARAMS")
 prodDbUser=$(get_param "database_user" "$PROD_PARAMS")
 prodDbPass=$(get_param "database_password" "$PROD_PARAMS")
+prodDbPrefix=$(get_param "database_prefix" "$PROD_PARAMS")
 
 echo -e "Staging Database:   ${GREEN}${stagingDbName}${NC} on ${GREEN}${stagingDbHost}${NC} (Prefix: '${stagingDbPrefix}')"
-echo -e "Production Database:${ORANGE}${prodDbName}${NC} on ${ORANGE}${prodDbHost}${NC}"
+echo -e "Production Database:${ORANGE}${prodDbName}${NC} on ${ORANGE}${prodDbHost}${NC} (Prefix: '${prodDbPrefix}')"
 
 # 2. Auto-Detect Staging-Only Modules
 echo -e "\n${BLUE}=== Detecting Staging-Only Modules... ===${NC}"
@@ -250,9 +251,22 @@ else
         done
     fi
 
-    # C. Dump Production DB
-    echo "Dumping Production database..."
-    mysqldump -h"${prodDbHost}" -u"${prodDbUser}" -p"${prodDbPass}" "${prodDbName}" > "$TEMP_PROD_DUMP"
+    # C. Dump Production DB (Optimized schema + data pass)
+    if [ "${EXCLUDE_HEAVY_DB_DATA:-true}" = true ]; then
+        echo "Dumping Production database (Optimized: skipping heavy log & statistics data)..."
+        # Pass 1: Dump schema (structures only) for all tables
+        mysqldump -h"${prodDbHost}" -u"${prodDbUser}" -p"${prodDbPass}" --no-data "${prodDbName}" > "$TEMP_PROD_DUMP"
+        
+        # Pass 2: Dump data for all tables EXCEPT logs & statistics
+        IGNORE_ARGS=""
+        for tbl in log mail connections connections_page connections_source guest pagenotfound statsearch; do
+            IGNORE_ARGS="${IGNORE_ARGS} --ignore-table=${prodDbName}.${prodDbPrefix}${tbl}"
+        done
+        mysqldump -h"${prodDbHost}" -u"${prodDbUser}" -p"${prodDbPass}" --no-create-info ${IGNORE_ARGS} "${prodDbName}" >> "$TEMP_PROD_DUMP"
+    else
+        echo "Dumping Production database (Full dump)..."
+        mysqldump -h"${prodDbHost}" -u"${prodDbUser}" -p"${prodDbPass}" "${prodDbName}" > "$TEMP_PROD_DUMP"
+    fi
 
     # D. Import into Staging DB
     echo "Importing Production database dump into Staging..."
