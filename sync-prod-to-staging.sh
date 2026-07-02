@@ -176,6 +176,9 @@ else
     echo "Current Staging Git state:"
     git status -s
     
+    echo "Releasing ignored files in Git index..."
+    git update-index --no-assume-unchanged .htaccess img/.htaccess 2>/dev/null
+    
     echo "Resetting local staging modifications..."
     git reset --hard
     
@@ -377,6 +380,10 @@ else
 EOT
         echo -e "${GREEN}[Ok] img/.htaccess permissions & fallback updated successfully.${NC}"
     fi
+
+    # C. Lock files in the local Git index so they are hidden from 'git status'
+    echo "Hiding .htaccess modifications from Git status..."
+    git update-index --assume-unchanged .htaccess img/.htaccess 2>/dev/null
 fi
 
 # 9. Cache Reset & OPcache reset
