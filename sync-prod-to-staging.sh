@@ -227,6 +227,9 @@ if [ "$DRY_RUN" = true ]; then
     echo "  UPDATE ${stagingDbPrefix}shop_url SET domain = '${STAGING_DOMAIN}', domain_ssl = '${STAGING_DOMAIN}';"
     echo "  UPDATE ${stagingDbPrefix}configuration SET value = '${STAGING_DOMAIN}' WHERE name = 'PS_SHOP_DOMAIN';"
     echo "  UPDATE ${stagingDbPrefix}configuration SET value = '${STAGING_DOMAIN}' WHERE name = 'PS_SHOP_DOMAIN_SSL';"
+    if [ -n "$DEVELOPER_EMAIL" ]; then
+        echo "  UPDATE ${stagingDbPrefix}configuration SET value = '${DEVELOPER_EMAIL}' WHERE name = 'PS_SHOP_EMAIL';"
+    fi
     echo "[Dry-Run] Would run backup cleanup (keeping last 3 backups, deleting older than 7 days)"
 else
     # Ensure backup directory exists
@@ -274,14 +277,17 @@ else
     rm -f "$TEMP_PROD_DUMP"
 
     # E. Adjust shop URLs and domains in Staging
-    echo "Adjusting Staging URLs in database..."
+    echo "Adjusting Staging URLs and configs in database..."
     SQL_QUERIES="
         UPDATE ${stagingDbPrefix}shop_url SET domain = '${STAGING_DOMAIN}', domain_ssl = '${STAGING_DOMAIN}';
         UPDATE ${stagingDbPrefix}configuration SET value = '${STAGING_DOMAIN}' WHERE name = 'PS_SHOP_DOMAIN';
         UPDATE ${stagingDbPrefix}configuration SET value = '${STAGING_DOMAIN}' WHERE name = 'PS_SHOP_DOMAIN_SSL';
     "
+    if [ -n "$DEVELOPER_EMAIL" ]; then
+        SQL_QUERIES="${SQL_QUERIES} UPDATE ${stagingDbPrefix}configuration SET value = '${DEVELOPER_EMAIL}' WHERE name = 'PS_SHOP_EMAIL';"
+    fi
     mysql -h"${stagingDbHost}" -u"${stagingDbUser}" -p"${stagingDbPass}" "${stagingDbName}" -e "${SQL_QUERIES}"
-    echo -e "${GREEN}[Ok] Database sync and URL adaptation complete.${NC}"
+    echo -e "${GREEN}[Ok] Database sync, URL adaptation and config overrides complete.${NC}"
 fi
 
 # 7. Asset Sync (rsync)
