@@ -233,6 +233,12 @@ if [ "$DRY_RUN" = true ]; then
     if [ -n "$DEVELOPER_EMAIL" ]; then
         echo "  UPDATE ${stagingDbPrefix}configuration SET value = '${DEVELOPER_EMAIL}' WHERE name = 'PS_SHOP_EMAIL';"
     fi
+    if [ -n "$DISABLE_MODULES_ON_STAGING" ]; then
+        for mod in $DISABLE_MODULES_ON_STAGING; do
+            echo "  UPDATE ${stagingDbPrefix}module SET active = 0 WHERE name = '${mod}';"
+            echo "  UPDATE ${stagingDbPrefix}module_shop SET enable_device = 0 WHERE id_module = (SELECT id_module FROM ${stagingDbPrefix}module WHERE name = '${mod}');"
+        done
+    fi
     echo "[Dry-Run] Would run backup cleanup (keeping last 3 backups, deleting older than 7 days)"
 else
     # Ensure backup directory exists
@@ -288,6 +294,12 @@ else
     "
     if [ -n "$DEVELOPER_EMAIL" ]; then
         SQL_QUERIES="${SQL_QUERIES} UPDATE ${stagingDbPrefix}configuration SET value = '${DEVELOPER_EMAIL}' WHERE name = 'PS_SHOP_EMAIL';"
+    fi
+    if [ -n "$DISABLE_MODULES_ON_STAGING" ]; then
+        for mod in $DISABLE_MODULES_ON_STAGING; do
+            SQL_QUERIES="${SQL_QUERIES} UPDATE ${stagingDbPrefix}module SET active = 0 WHERE name = '${mod}';"
+            SQL_QUERIES="${SQL_QUERIES} UPDATE ${stagingDbPrefix}module_shop SET enable_device = 0 WHERE id_module = (SELECT id_module FROM ${stagingDbPrefix}module WHERE name = '${mod}');"
+        done
     fi
     mysql -h"${stagingDbHost}" -u"${stagingDbUser}" -p"${stagingDbPass}" "${stagingDbName}" -e "${SQL_QUERIES}"
     echo -e "${GREEN}[Ok] Database sync, URL adaptation and config overrides complete.${NC}"
