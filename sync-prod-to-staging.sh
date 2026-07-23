@@ -191,29 +191,53 @@ else
 fi
 
 # 4. Git Alignment
-echo -e "\n${BLUE}=== Aligning Git Repository with Master... ===${NC}"
+echo -e "\n${BLUE}=== Aligning Git Repository... ===${NC}"
+
+# Detect current active branch on Staging (fallback to master if detached or empty)
+cd "$STAGING_DIR_PHYS"
+CURRENT_BRANCH=$(git branch --show-current 2>/dev/null)
+if [ -z "$CURRENT_BRANCH" ] || [ "$CURRENT_BRANCH" = "HEAD" ]; then
+    CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+fi
+if [ -z "$CURRENT_BRANCH" ] || [ "$CURRENT_BRANCH" = "HEAD" ]; then
+    CURRENT_BRANCH="master"
+fi
+
 if [ "$DRY_RUN" = true ]; then
+    echo -e "[Dry-Run] Detected active branch on Staging: ${ORANGE}${CURRENT_BRANCH}${NC}"
     echo "[Dry-Run] Would run in ${STAGING_DIR_PHYS}:"
+    echo "  git update-index --no-assume-unchanged .htaccess img/.htaccess"
     echo "  git reset --hard"
     echo "  git fetch origin"
-    echo "  git checkout master"
-    echo "  git reset --hard origin/master"
+    echo "  git checkout ${CURRENT_BRANCH}"
+    echo "  git reset --hard origin/${CURRENT_BRANCH} (if origin/${CURRENT_BRANCH} exists)"
 else
-    cd "$STAGING_DIR_PHYS"
-    echo "Current Staging Git state:"
+    echo -e "Active branch on Staging: ${GREEN}${CURRENT_BRANCH}${NC}"
+    echo "Current Staging Git status:"
     git status -s
     
     echo "Releasing ignored files in Git index..."
     git update-index --no-assume-unchanged .htaccess img/.htaccess 2>/dev/null
     
-    echo "Resetting local staging modifications..."
+    echo "Resetting local modifications..."
     git reset --hard
     
-    echo "Fetching and checking out master branch..."
+    echo "Fetching latest changes from origin..."
     git fetch origin
-    git checkout master
-    git reset --hard origin/master
-    echo -e "${GREEN}[Ok] Staging git aligned with master.${NC}"
+    
+    echo "Checking out active branch '${CURRENT_BRANCH}'..."
+    git checkout "$CURRENT_BRANCH"
+    
+    # Check if origin/$CURRENT_BRANCH exists on remote
+    if git rev-parse --verify "origin/$CURRENT_BRANCH" &>/dev/null; then
+        echo "Resetting branch '${CURRENT_BRANCH}' to origin/${CURRENT_BRANCH}..."
+        git reset --hard "origin/$CURRENT_BRANCH"
+    else
+        echo "Remote branch 'origin/$CURRENT_BRANCH' not found; resetting local '${CURRENT_BRANCH}'..."
+        git reset --hard
+    fi
+    
+    echo -e "${GREEN}[Ok] Staging git aligned on branch '${CURRENT_BRANCH}'.${NC}"
 fi
 
 # 5. Restore WIP Files
