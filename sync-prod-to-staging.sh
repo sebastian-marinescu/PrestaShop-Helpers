@@ -52,8 +52,29 @@ if [ "$DRY_RUN" = true ]; then
     echo -e "${ORANGE}==================================================${NC}"
 fi
 
-# 1. Validation Checks
-echo -e "${BLUE}=== Running validation checks... ===${NC}"
+# 1. Validation Checks & Fail-Safes
+echo -e "${BLUE}=== Running validation checks & safety checks... ===${NC}"
+
+# Fail-Safe 1: Current working directory or script directory must not contain 'production'
+pwd_lower=$(echo "$PWD" | tr '[:upper:]' '[:lower:]')
+dir_lower=$(echo "$DIR" | tr '[:upper:]' '[:lower:]')
+
+if [[ "$pwd_lower" == *"production"* ]] || [[ "$dir_lower" == *"production"* ]]; then
+    echo -e "${RED}[CRITICAL ERROR] Execution blocked! Current working directory or script path contains 'production'. This script must only be executed from Staging!${NC}"
+    exit 1
+fi
+
+# Fail-Safe 2: Staging and Production physical directories must not match
+if [ "$STAGING_DIR_PHYS" == "$PROD_DIR_PHYS" ]; then
+    echo -e "${RED}[CRITICAL ERROR] STAGING_DIR and PROD_DIR resolve to the same physical path ($STAGING_DIR_PHYS)! Aborting execution.${NC}"
+    exit 1
+fi
+
+# Fail-Safe 3: Staging and Production domains must not match
+if [ "$STAGING_DOMAIN" == "$PROD_DOMAIN" ]; then
+    echo -e "${RED}[CRITICAL ERROR] STAGING_DOMAIN and PROD_DOMAIN are identical ('$PROD_DOMAIN')! Aborting execution.${NC}"
+    exit 1
+fi
 
 if [ ! -d "$PROD_DIR_PHYS" ]; then
     echo -e "${RED}[Error] Production directory does not exist: $PROD_DIR_PHYS${NC}"
@@ -104,6 +125,12 @@ prodDbPrefix=$(get_param "database_prefix" "$PROD_PARAMS")
 
 echo -e "Staging Database:   ${GREEN}${stagingDbName}${NC} on ${GREEN}${stagingDbHost}${NC} (Prefix: '${stagingDbPrefix}')"
 echo -e "Production Database:${ORANGE}${prodDbName}${NC} on ${ORANGE}${prodDbHost}${NC} (Prefix: '${prodDbPrefix}')"
+
+# Fail-Safe 4: Target Staging database name must not match Production database name
+if [ "$stagingDbName" == "$prodDbName" ]; then
+    echo -e "${RED}[CRITICAL ERROR] Target Staging database name matches Production database name ('$prodDbName')! Aborting to protect Production database.${NC}"
+    exit 1
+fi
 
 # 2. Auto-Detect Staging-Only Modules
 echo -e "\n${BLUE}=== Detecting Staging-Only Modules... ===${NC}"
