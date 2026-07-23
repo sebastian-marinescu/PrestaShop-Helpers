@@ -126,9 +126,26 @@ prodDbPrefix=$(get_param "database_prefix" "$PROD_PARAMS")
 echo -e "Staging Database:   ${GREEN}${stagingDbName}${NC} on ${GREEN}${stagingDbHost}${NC} (Prefix: '${stagingDbPrefix}')"
 echo -e "Production Database:${ORANGE}${prodDbName}${NC} on ${ORANGE}${prodDbHost}${NC} (Prefix: '${prodDbPrefix}')"
 
-# Fail-Safe 4: Target Staging database name must not match Production database name
+stagingDbName_lower=$(echo "$stagingDbName" | tr '[:upper:]' '[:lower:]')
+prodDbName_lower=$(echo "$prodDbName" | tr '[:upper:]' '[:lower:]')
+
+# Fail-Safe 4A: Target Staging database name must not equal Production database name
 if [ "$stagingDbName" == "$prodDbName" ]; then
     echo -e "${RED}[CRITICAL ERROR] Target Staging database name matches Production database name ('$prodDbName')! Aborting to protect Production database.${NC}"
+    echo -e "${ORANGE}[Hint] Your Staging app/config/parameters.php currently contains Production database credentials. Please restore Staging parameters.php before running sync.${NC}"
+    exit 1
+fi
+
+# Fail-Safe 4B: Target Staging database name must not contain 'production'
+if [[ "$stagingDbName_lower" == *"production"* ]]; then
+    echo -e "${RED}[CRITICAL ERROR] Target Staging database name ('$stagingDbName') contains 'production'! Aborting to protect Production database.${NC}"
+    echo -e "${ORANGE}[Hint] Your Staging app/config/parameters.php currently contains Production database credentials. Please restore Staging parameters.php before running sync.${NC}"
+    exit 1
+fi
+
+# Fail-Safe 4C: Target Staging database name must contain 'staging'
+if [[ "$stagingDbName_lower" != *"staging"* ]]; then
+    echo -e "${RED}[CRITICAL ERROR] Target Staging database name ('$stagingDbName') does not contain 'staging'! Aborting execution for safety.${NC}"
     exit 1
 fi
 
