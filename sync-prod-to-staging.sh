@@ -233,8 +233,14 @@ else
     echo "Current Staging Git status:"
     git status -s
     
+    # Backup Staging parameters.php before Git reset
+    PARAM_BACKUP="/tmp/staging_params_backup_$(date +%s).php"
+    if [ -f "${STAGING_DIR_PHYS}/app/config/parameters.php" ]; then
+        cp -fp "${STAGING_DIR_PHYS}/app/config/parameters.php" "$PARAM_BACKUP"
+    fi
+
     echo "Releasing ignored files in Git index..."
-    git update-index --no-assume-unchanged .htaccess img/.htaccess 2>/dev/null
+    git update-index --no-assume-unchanged app/config/parameters.php .htaccess img/.htaccess 2>/dev/null
     
     echo "Resetting local modifications..."
     git reset --hard
@@ -253,6 +259,16 @@ else
         echo "Remote branch 'origin/$CURRENT_BRANCH' not found; resetting local '${CURRENT_BRANCH}'..."
         git reset --hard
     fi
+    
+    # Restore Staging's parameters.php
+    if [ -f "$PARAM_BACKUP" ]; then
+        echo "Restoring Staging-specific parameters.php..."
+        cp -fp "$PARAM_BACKUP" "${STAGING_DIR_PHYS}/app/config/parameters.php"
+        rm -f "$PARAM_BACKUP"
+    fi
+    
+    echo "Locking parameters.php in Git index (assume-unchanged)..."
+    git update-index --assume-unchanged app/config/parameters.php 2>/dev/null
     
     echo -e "${GREEN}[Ok] Staging git aligned on branch '${CURRENT_BRANCH}'.${NC}"
 fi
@@ -287,10 +303,12 @@ echo -e "\n${BLUE}=== Synchronizing Database... ===${NC}"
 DATE=$(date "+%Y%m%d_%H%M%S")
 STAGING_BACKUP_DIR="${STAGING_DIR_PHYS}/helper/backups"
 STAGING_BACKUP_FILE="${STAGING_BACKUP_DIR}/backup_staging_before_sync_${DATE}.sql"
+PROD_BACKUP_FILE="${STAGING_BACKUP_DIR}/backup_prod_before_sync_${DATE}.sql"
 TEMP_PROD_DUMP="/tmp/prod_dump_${DATE}.sql"
 
 if [ "$DRY_RUN" = true ]; then
     echo "[Dry-Run] Would ensure backup directory exists: ${STAGING_BACKUP_DIR}"
+    echo "[Dry-Run] Would backup Production database to: ${PROD_BACKUP_FILE}"
     echo "[Dry-Run] Would backup Staging database to: ${STAGING_BACKUP_FILE}"
     echo "[Dry-Run] Would dump Production database to: ${TEMP_PROD_DUMP}"
     echo "[Dry-Run] Would import ${TEMP_PROD_DUMP} into Staging database (${stagingDbName})"
@@ -312,24 +330,29 @@ else
     # Ensure backup directory exists
     mkdir -p "$STAGING_BACKUP_DIR"
 
-    # A. Backup Staging DB
+    # A. Safety Backup Production & Staging DB
+    echo "Creating safety backup of Production database..."
+    mysqldump -h"${prodDbHost}" -u"${prodDbUser}" -p"${prodDbPass}" "${prodDbName}" > "$PROD_BACKUP_FILE"
+    echo -e "${GREEN}[Ok] Production database safety backup saved to: ${PROD_BACKUP_FILE}${NC}"
+
     echo "Creating backup of current Staging database..."
     mysqldump -h"${stagingDbHost}" -u"${stagingDbUser}" -p"${stagingDbPass}" "${stagingDbName}" > "$STAGING_BACKUP_FILE"
     echo -e "${GREEN}[Ok] Staging database backup saved to: ${STAGING_BACKUP_FILE}${NC}"
 
     # B. Cleanup old backups (keep at least the 3 newest backups, delete older than 7 days)
-    echo "Cleaning up old staging database backups..."
-    backups=($(ls -t "${STAGING_BACKUP_DIR}"/backup_staging_before_sync_*.sql 2>/dev/null))
-    
-    if [ ${#backups[@]} -gt 3 ]; then
-        for ((i=3; i<${#backups[@]}; i++)); do
-            file="${backups[$i]}"
-            if [ -n "$(find "$file" -mtime +7 2>/dev/null)" ]; then
-                echo "Deleting old staging database backup: $(basename "$file")"
-                rm -f "$file"
-            fi
-        done
-    fi
+    echo "Cleaning up old database backups..."
+    for prefix in backup_staging_before_sync_ backup_prod_before_sync_; do
+        backups=($(ls -t "${STAGING_BACKUP_DIR}"/${prefix}*.sql 2>/dev/null))
+        if [ ${#backups[@]} -gt 3 ]; then
+            for ((i=3; i<${#backups[@]}; i++)); do
+                file="${backups[$i]}"
+                if [ -n "$(find "$file" -mtime +7 2>/dev/null)" ]; then
+                    echo "Deleting old backup: $(basename "$file")"
+                    rm -f "$file"
+                fi
+            done
+        fi
+    done
 
     # C. Dump Production DB (Optimized schema + data pass)
     if [ "${EXCLUDE_HEAVY_DB_DATA:-true}" = true ]; then
@@ -472,8 +495,8 @@ EOT
     fi
 
     # C. Lock files in the local Git index so they are hidden from 'git status'
-    echo "Hiding .htaccess modifications from Git status..."
-    git update-index --assume-unchanged .htaccess img/.htaccess 2>/dev/null
+    echo "Hiding parameters.php and .htaccess modifications from Git status..."
+    git update-index --assume-unchanged app/config/parameters.php .htaccess img/.htaccess 2>/dev/null
 fi
 
 # 9. Cache Reset & OPcache reset
