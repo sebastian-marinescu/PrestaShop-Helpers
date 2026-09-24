@@ -531,6 +531,21 @@ else
     done
     
     echo "Resetting PHP OPcache..."
+    # Ensure reset_opcache.php is accessible even with Basic Auth enabled on Staging
+    HELPER_HTACCESS="${STAGING_DIR_PHYS}/helper/.htaccess"
+    cat <<'HELPERHT' > "$HELPER_HTACCESS"
+# Allow reset_opcache.php to be called without Basic Auth (used by sync script)
+<Files "reset_opcache.php">
+    <IfModule mod_authz_core.c>
+        Require all granted
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Allow from all
+        Satisfy any
+    </IfModule>
+</Files>
+HELPERHT
     # Make curl call to trigger web-server OPcache reset (in case CLI doesn't clear FPM)
     # We bypass SSL verification check if hostpoint uses internal self-signed ssl on staging domain
     OPCACHE_RESET_URL="https://${STAGING_DOMAIN}/helper/reset_opcache.php"
