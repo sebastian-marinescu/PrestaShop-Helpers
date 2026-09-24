@@ -430,6 +430,7 @@ IMG_HTACCESS_FILE="${STAGING_DIR_PHYS}/img/.htaccess"
 
 if [ "$DRY_RUN" = true ]; then
     echo "[Dry-Run] Would adapt HTTP_HOST rules in ${HTACCESS_FILE} from ${PROD_DOMAIN} to ${STAGING_DOMAIN}"
+    echo "[Dry-Run] Would enable Basic Auth password protection in ${HTACCESS_FILE}"
     echo "[Dry-Run] Would inject product image clean URL fallback rules into ${HTACCESS_FILE}"
     echo "[Dry-Run] Would update permissions and inject missing image fallback rules into ${IMG_HTACCESS_FILE}"
 else
@@ -437,6 +438,11 @@ else
     if [ -f "$HTACCESS_FILE" ]; then
         # Use portable sed with .bak extension to work seamlessly on both GNU and BSD/FreeBSD sed
         sed -i.bak "s/RewriteCond %{HTTP_HOST} ^${PROD_DOMAIN}\$/RewriteCond %{HTTP_HOST} ^(${STAGING_DOMAIN}|${PROD_DOMAIN})\$/g" "$HTACCESS_FILE" && rm -f "$HTACCESS_FILE.bak"
+        
+        # Enable Basic Auth password protection for Staging
+        # Uncomments the 4 commented-out lines below "# Password Protection"
+        sed -i.bak 's/^#AuthUserFile/AuthUserFile/; s/^#AuthType/AuthType/; s/^#AuthName/AuthName/; s/^#Require valid-user/Require valid-user/' "$HTACCESS_FILE" && rm -f "$HTACCESS_FILE.bak"
+        echo -e "${GREEN}[Ok] Password protection enabled for Staging.${NC}"
         
         # Remove legacy fallback blocks cleanly using portable awk
         awk '/# Staging Image Fallback Start/{p=1; next} /# Staging Image Fallback End/{p=0; next} /# Staging Clean URL Image Fallback Start/{p=1; next} /# Staging Clean URL Image Fallback End/{p=0; next} !p' "$HTACCESS_FILE" > "$HTACCESS_FILE.tmp" && mv "$HTACCESS_FILE.tmp" "$HTACCESS_FILE"
