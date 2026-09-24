@@ -533,7 +533,17 @@ else
     echo "Resetting PHP OPcache..."
     # Ensure reset_opcache.php is accessible even with Basic Auth enabled on Staging
     HELPER_HTACCESS="${STAGING_DIR_PHYS}/helper/.htaccess"
-    cat <<'HELPERHT' > "$HELPER_HTACCESS"
+    
+    # Remove old auto-generated block if present, then append fresh block
+    if [ -f "$HELPER_HTACCESS" ]; then
+        # Strip previously injected block between markers
+        awk '/# Sync Script Auth Bypass Start/{p=1; next} /# Sync Script Auth Bypass End/{p=0; next} !p' "$HELPER_HTACCESS" > "${HELPER_HTACCESS}.tmp" && mv "${HELPER_HTACCESS}.tmp" "$HELPER_HTACCESS"
+    fi
+    
+    cat <<'HELPERHT' >> "$HELPER_HTACCESS"
+# Sync Script Auth Bypass Start
+Options -Indexes
+
 # Allow reset_opcache.php to be called without Basic Auth (used by sync script)
 <Files "reset_opcache.php">
     <IfModule mod_authz_core.c>
@@ -545,6 +555,18 @@ else
         Satisfy any
     </IfModule>
 </Files>
+
+# Deny access to sensitive files (.env, backups, shell scripts)
+<FilesMatch "\.(env|sh|sql)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order deny,allow
+        Deny from all
+    </IfModule>
+</FilesMatch>
+# Sync Script Auth Bypass End
 HELPERHT
     # Make curl call to trigger web-server OPcache reset (in case CLI doesn't clear FPM)
     # We bypass SSL verification check if hostpoint uses internal self-signed ssl on staging domain
