@@ -441,8 +441,14 @@ else
         
         # Enable Basic Auth password protection for Staging
         # Uncomments the 4 commented-out lines below "# Password Protection"
-        sed -i.bak 's/^#AuthUserFile/AuthUserFile/; s/^#AuthType/AuthType/; s/^#AuthName/AuthName/; s/^#Require valid-user/Require valid-user/' "$HTACCESS_FILE" && rm -f "$HTACCESS_FILE.bak"
-        echo -e "${GREEN}[Ok] Password protection enabled for Staging.${NC}"
+        if grep -q '^#AuthUserFile' "$HTACCESS_FILE"; then
+            sed -i.bak 's/^#AuthUserFile/AuthUserFile/; s/^#AuthType/AuthType/; s/^#AuthName/AuthName/; s/^#Require valid-user/Require valid-user/' "$HTACCESS_FILE" && rm -f "$HTACCESS_FILE.bak"
+            echo -e "${GREEN}[Ok] Password protection enabled for Staging.${NC}"
+        elif grep -q '^AuthUserFile' "$HTACCESS_FILE"; then
+            echo -e "${GREEN}[Ok] Password protection already active.${NC}"
+        else
+            echo -e "${ORANGE}[Warning] No password protection lines found in .htaccess. Staging is NOT password-protected!${NC}"
+        fi
         
         # Remove legacy fallback blocks cleanly using portable awk
         awk '/# Staging Image Fallback Start/{p=1; next} /# Staging Image Fallback End/{p=0; next} /# Staging Clean URL Image Fallback Start/{p=1; next} /# Staging Clean URL Image Fallback End/{p=0; next} !p' "$HTACCESS_FILE" > "$HTACCESS_FILE.tmp" && mv "$HTACCESS_FILE.tmp" "$HTACCESS_FILE"
