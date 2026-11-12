@@ -1,0 +1,7 @@
+# Shell scripts and config must keep LF line endings (also when edited on Windows)
+* text=auto
+*.sh text eol=lf
+*.php text eol=lf
+*.md text eol=lf
+.env* text eol=lf
+.htaccess text eol=lf

@@ -412,6 +412,20 @@ sync_dir() {
 sync_dir "download"
 sync_dir "upload"
 
+# vendor/ is not tracked in Git (see .gitignore) – keep it identical to Production,
+# otherwise Staging may mix core files of one version with vendor/ of another one
+# (e.g. after an upgrade test with ps-upgrade.sh).
+if [ -d "${PROD_DIR_PHYS}/vendor" ]; then
+    echo "Syncing vendor directory (not tracked in Git)..."
+    if [ "$DRY_RUN" = true ]; then
+        echo "[Dry-Run] Would run: rsync -a --delete ${PROD_DIR_PHYS}/vendor/ ${STAGING_DIR_PHYS}/vendor/"
+    else
+        rsync -a --delete "${PROD_DIR_PHYS}/vendor/" "${STAGING_DIR_PHYS}/vendor/"
+    fi
+else
+    echo -e "${ORANGE}[Warning] ${PROD_DIR_PHYS}/vendor not found – vendor sync skipped.${NC}"
+fi
+
 if [ "$SYNC_IMAGES" = true ]; then
     echo "Syncing images (SYNC_IMAGES=true)..."
     if [ "$DRY_RUN" = true ]; then

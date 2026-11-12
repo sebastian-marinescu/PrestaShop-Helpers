@@ -11,6 +11,11 @@ This guide describes how to configure and run the `sync-prod-to-staging.sh` scri
 6. **Zero-Transfer Image Fallback**: Automatically updates `.htaccess` on Staging to rewrite domain checks (`staging.betz-designmoebel.ch`), support clean product URLs (`235689-product...jpg`), and injects fallback redirects in `img/.htaccess`. Any missing product or CMS image automatically redirects on-the-fly to Production (`https://betz-designmoebel.ch/...`) without 403 Forbidden errors, saving gigabytes of disk space and sync time.
 7. **Cache Cleansing**: Deletes PrestaShop's Symfony cache and triggers a PHP OPcache reset via HTTP curl.
 8. **Fail-Safe Protection**: Abstract, project-agnostic safety checks that block execution if called from inside a directory containing `production`, or if Staging and Production physical directories, domains, or database names match.
+9. **Vendor Sync**: `vendor/` is not tracked in Git, so it is mirrored from Production with `rsync --delete`. This prevents Staging from mixing core files of one PrestaShop version with the `vendor/` folder of another one (e.g. after an upgrade test with [`ps-upgrade.sh`](ps-upgrade.md)).
+
+> [!NOTE]
+> After an upgrade test on Staging, you can go back either with `./ps-upgrade.sh restore` (exact state before the test) or with this sync script (current Production state).
+> The sync script keeps the **currently checked out branch** – so switch back first (e.g. `git checkout -f master`), otherwise it would align the `upgrade/ps-…` branch with an old database.
 
 ---
 
