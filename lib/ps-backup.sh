@@ -70,14 +70,37 @@ backup_create() {
     info "Backup-Set: $BACKUP_SET_DIR"
 
     # --- Files
-    local excludes=() p
+    # Separate root-level single-segment excludes (e.g. img, .git) from multi-segment paths (e.g. var/cache).
+    # On FreeBSD bsdtar (Hostpoint), --exclude=./img strips the leading ./ and matches "img" at ANY depth
+    # (such as modules/*/views/img or themes/*/_dev/img). Omitting root excludes from the top-level entry
+    # list passed to tar guarantees that only the top-level folder is skipped on both GNU tar and bsdtar.
+    local excludes=() top_excludes="" p
+    if tar --version 2>/dev/null | grep -qi 'gnu'; then
+        excludes+=("--anchored")
+    fi
     while IFS= read -r p; do
-        [ -n "$p" ] && excludes+=("--exclude=./$p")
+        [ -n "$p" ] || continue
+        case "$p" in
+            */*) excludes+=("--exclude=./$p") ;;
+            *)   top_excludes="${top_excludes}${p}"$'\n' ;;
+        esac
     done < <(backup_exclude_paths)
+
+    local top_entries=() e name
+    for e in "$PS_ROOT"/* "$PS_ROOT"/.[!.]* "$PS_ROOT"/..?*; do
+        [ -e "$e" ] || [ -L "$e" ] || continue
+        name="${e##*/}"
+        if printf '%s' "$top_excludes" | grep -qxF "$name"; then
+            continue
+        fi
+        top_entries+=("./$name")
+    done
+    [ "${#top_entries[@]}" -gt 0 ] || die "Keine Dateien in $PS_ROOT zum Sichern gefunden."
+
     info "Sichere Dateien (ohne: img/, .git, var/cache, var/logs, autoupgrade-Arbeitsordner ...) ..."
     local t0 rc
     t0="$(date +%s)"
-    (cd "$PS_ROOT" && tar -czf "$BACKUP_SET_DIR/files.tar.gz" "${excludes[@]}" .)
+    (cd "$PS_ROOT" && tar -czf "$BACKUP_SET_DIR/files.tar.gz" "${excludes[@]}" "${top_entries[@]}")
     rc=$?
     if [ "$rc" -ne 0 ]; then
         if tar -tzf "$BACKUP_SET_DIR/files.tar.gz" >/dev/null 2>&1; then
