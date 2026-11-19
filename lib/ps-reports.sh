@@ -578,10 +578,40 @@ report_child_theme() {
             *) continue ;;
         esac
         rm -f "$old_f" "$new_f"
-        local has_old=0 has_new=0 what="Parent"
+        local has_old=0 has_new=0 what="Parent" cmp_logical="$logical" loc_note=""
         theme_src_file old "$logical" "$old_f" && has_old=1
         theme_src_file new "$logical" "$new_f" && has_new=1
         case "$logical" in module:*) what="Modul-Template (${mod})" ;; esac
+
+        # Localized module mails (mails/<iso>/...) or legacy translation files (translations/<iso>.php):
+        # PrestaShop release archives only ship mails/en/... in native modules.
+        if [ "$has_new" = "0" ]; then
+            case "$logical" in
+                module:*/mails/*/*)
+                    local mail_rest="${sub#mails/}" mail_iso="" mail_file="" en_logical=""
+                    mail_iso="${mail_rest%%/*}"
+                    mail_file="${mail_rest#*/}"
+                    if [ -n "$mail_iso" ] && [ "$mail_iso" != "en" ] && [ -n "$mail_file" ]; then
+                        en_logical="module:${mod}/mails/en/${mail_file}"
+                        if theme_src_file new "$en_logical" "$new_f"; then
+                            has_new=1
+                            cmp_logical="$en_logical"
+                            loc_note=" (lokalisierte Mail-Vorlage, Referenz: mails/en/${mail_file})"
+                            rm -f "$old_f"
+                            has_old=0
+                            theme_src_file old "$en_logical" "$old_f" && has_old=1
+                        fi
+                    fi
+                    ;;
+                module:*/translations/*.php)
+                    if theme_new_known "$logical"; then
+                        n_green=$((n_green + 1))
+                        status "🟢" "${rel} – ${what} (lokalisierte Übersetzungsdatei)"
+                        continue
+                    fi
+                    ;;
+            esac
+        fi
 
         if [ "$has_old" = "0" ] && [ "$has_new" = "0" ]; then
             n_own=$((n_own + 1)); [ "${OPT_VERBOSE:-0}" = "1" ] && status "⚪" "${rel} – eigene Datei (kein Gegenstück)"
@@ -597,13 +627,37 @@ report_child_theme() {
         fi
         if [ "$has_old" = "1" ] && [ "$has_new" = "1" ]; then
             if tool files-equal "$old_f" "$new_f"; then
-                n_green=$((n_green + 1)); status "🟢" "${rel} – ${what} unverändert"
+                n_green=$((n_green + 1)); status "🟢" "${rel} – ${what} unverändert${loc_note}"
             else
-                n_orange=$((n_orange + 1)); status "🟠" "${rel} – ${what} geändert → manuell prüfen" 1
-                local cmd
-                cmd="diff -u --strip-trailing-cr $(theme_src_label old "$logical") $(theme_src_label new "$logical")"
-                detail "     $cmd"
+                local merge_hint="" merge_cmd=""
+                if [ -z "$loc_note" ] && have git && [ -f "$child_dir/$rel" ]; then
+                    if git merge-file -p "$child_dir/$rel" "$old_f" "$new_f" >/dev/null 2>&1; then
+                        merge_hint=" [3-Wege-Merge konfliktfrei möglich]"
+                        merge_cmd="git merge-file $child_dir/$rel $(theme_src_label old "$cmp_logical") $(theme_src_label new "$cmp_logical")"
+                    else
+                        merge_hint=" [3-Wege-Merge hat Konflikte – manuell prüfen]"
+                    fi
+                fi
+                n_orange=$((n_orange + 1)); status "🟠" "${rel} – ${what} geändert${loc_note} → manuell prüfen${merge_hint}" 1
+                local cmd diff_out
+                cmd="diff -u --strip-trailing-cr $(theme_src_label old "$cmp_logical") $(theme_src_label new "$cmp_logical")"
+                detail "     Diff:  $cmd"
                 rep "    \`$cmd\`"
+                if [ -n "$merge_cmd" ]; then
+                    detail "     Merge: $merge_cmd"
+                    rep "    \`$merge_cmd\`"
+                fi
+                diff_out="$(diff -u --strip-trailing-cr -L "old/${cmp_logical}" -L "new/${cmp_logical}" "$old_f" "$new_f" 2>/dev/null | head -n 120 || true)"
+                if [ -n "$diff_out" ]; then
+                    rep "    <details><summary>Diff im Parent/Modul anzeigen (${cmp_logical})</summary>"
+                    rep ""
+                    rep '    ```diff'
+                    while IFS= read -r dline; do
+                        rep "    $dline"
+                    done <<< "$diff_out"
+                    rep '    ```'
+                    rep "    </details>"
+                fi
             fi
         elif [ "$has_old" = "1" ]; then
             n_red=$((n_red + 1)); status "🔴" "${rel} – ${what} in der neuen Version ENTFERNT → Override verwaist" 1
@@ -642,14 +696,14 @@ report_theme_modules() {
             status "⚠️" "${m}: nicht mehr im Theme-Paket ${THEME_NEW_VERSION} enthalten (${label})" 1
         fi
         if have git && [ -n "${THEME_BASE_REF:-}" ] && [ -d "$PS_ROOT/modules/$m" ]; then
-            changes="$(git -C "$PS_ROOT" diff --shortstat "$THEME_BASE_REF" -- "modules/$m" 2>/dev/null | sed 's/^ *//')"
-            untracked="$(git -C "$PS_ROOT" ls-files --others --exclude-standard -- "modules/$m" 2>/dev/null | wc -l | tr -d ' ')"
+            changes="$(git -C "$PS_ROOT" diff --ignore-space-at-eol --shortstat "$THEME_BASE_REF" -- "modules/$m" ":!modules/$m/config_*.xml" 2>/dev/null | sed 's/^ *//')"
+            untracked="$(git -C "$PS_ROOT" ls-files --others --exclude-standard -- "modules/$m" ":!modules/$m/config_*.xml" 2>/dev/null | wc -l | tr -d ' ')"
         fi
         if [ -n "$changes" ] || [ "${untracked:-0}" != "0" ]; then
             n_changed=$((n_changed + 1))
             status "🟠" "${m} (${label}): lokal geändert seit ${THEME_BASE_REF:0:10} (Theme-Installation) – ${changes:-}$([ "${untracked:-0}" != "0" ] && printf " (+%s neue Dateien)" "$untracked")" 1
-            detail "     git -C $PS_ROOT diff --stat ${THEME_BASE_REF:0:10} -- modules/$m"
-            rep "    \`git -C $PS_ROOT diff --stat ${THEME_BASE_REF:0:10} -- modules/$m\`"
+            detail "     git -C $PS_ROOT diff --ignore-space-at-eol --stat ${THEME_BASE_REF:0:10} -- modules/$m ':!modules/$m/config_*.xml'"
+            rep "    \`git -C $PS_ROOT diff --ignore-space-at-eol --stat ${THEME_BASE_REF:0:10} -- modules/$m ':!modules/$m/config_*.xml'\`"
         else
             status "🟢" "${m} (${label}): keine lokalen Änderungen"
         fi
