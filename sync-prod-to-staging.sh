@@ -426,17 +426,21 @@ else
     echo -e "${ORANGE}[Warning] ${PROD_DIR_PHYS}/vendor not found – vendor sync skipped.${NC}"
 fi
 
-# Sync module-level vendor/ directories (gitignored in custom submodules such as
-# pcon_configurator, pcon_priceapi, link2kuubix, usm_configurator).
-echo "Syncing module vendor directories (not tracked in Git)..."
+# Sync module-level vendor/ directories for custom submodules (where vendor/ is
+# gitignored, e.g. pcon_configurator, pcon_priceapi, link2kuubix, usm_configurator)
+# or when vendor/autoload.php is missing on Staging. Never overwrite Git-tracked
+# module vendor/ folders (such as modules/autoupgrade/vendor).
+echo "Syncing gitignored module vendor directories..."
 for prod_mod_vendor in "${PROD_DIR_PHYS}"/modules/*/vendor; do
     [ -d "$prod_mod_vendor" ] || continue
     mod_name=$(basename "$(dirname "$prod_mod_vendor")")
-    if [ -d "${STAGING_DIR_PHYS}/modules/${mod_name}" ]; then
+    staging_mod_dir="${STAGING_DIR_PHYS}/modules/${mod_name}"
+    [ -d "$staging_mod_dir" ] || continue
+    if [ -e "${staging_mod_dir}/.git" ] || [ ! -f "${staging_mod_dir}/vendor/autoload.php" ]; then
         if [ "$DRY_RUN" = true ]; then
-            echo "[Dry-Run] Would run: rsync -a --delete ${prod_mod_vendor}/ ${STAGING_DIR_PHYS}/modules/${mod_name}/vendor/"
+            echo "[Dry-Run] Would run: rsync -a --delete ${prod_mod_vendor}/ ${staging_mod_dir}/vendor/"
         else
-            rsync -a --delete "${prod_mod_vendor}/" "${STAGING_DIR_PHYS}/modules/${mod_name}/vendor/"
+            rsync -a --delete "${prod_mod_vendor}/" "${staging_mod_dir}/vendor/"
         fi
     fi
 done
