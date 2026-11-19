@@ -426,6 +426,21 @@ else
     echo -e "${ORANGE}[Warning] ${PROD_DIR_PHYS}/vendor not found – vendor sync skipped.${NC}"
 fi
 
+# Sync module-level vendor/ directories (gitignored in custom submodules such as
+# pcon_configurator, pcon_priceapi, link2kuubix, usm_configurator).
+echo "Syncing module vendor directories (not tracked in Git)..."
+for prod_mod_vendor in "${PROD_DIR_PHYS}"/modules/*/vendor; do
+    [ -d "$prod_mod_vendor" ] || continue
+    mod_name=$(basename "$(dirname "$prod_mod_vendor")")
+    if [ -d "${STAGING_DIR_PHYS}/modules/${mod_name}" ]; then
+        if [ "$DRY_RUN" = true ]; then
+            echo "[Dry-Run] Would run: rsync -a --delete ${prod_mod_vendor}/ ${STAGING_DIR_PHYS}/modules/${mod_name}/vendor/"
+        else
+            rsync -a --delete "${prod_mod_vendor}/" "${STAGING_DIR_PHYS}/modules/${mod_name}/vendor/"
+        fi
+    fi
+done
+
 if [ "$SYNC_IMAGES" = true ]; then
     echo "Syncing images (SYNC_IMAGES=true)..."
     if [ "$DRY_RUN" = true ]; then
