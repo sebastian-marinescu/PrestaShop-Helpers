@@ -19,6 +19,7 @@ Das Toolkit ist generisch: Fast alles wird automatisch erkannt. Projektspezifisc
 3. [Einrichtung & `.env`](#3-einrichtung--env)
 4. [Befehlsreferenz](#4-befehlsreferenz)
 5. [Ablauf: Patch-/Minor-Upgrade (Staging → Production)](#5-ablauf-patch-minor-upgrade-staging--production)
+   - [Erste Schritte & Todos für die ersten Tests (8.2.1 → 8.2.9)](#51-erste-schritte--todos-für-die-ersten-tests-821--829)
 6. [Ablauf: Major-Upgrade inkl. Theme (z.B. 8.2 → 9.x)](#6-ablauf-major-upgrade-inkl-theme-zb-82--9x)
 7. [Backup & Restore](#7-backup--restore)
 8. [Report-Symbole](#8-report-symbole)
@@ -207,6 +208,38 @@ cd /home/docutife/www/production/helper
 
 > [!TIP]
 > Den Restore-Test auf Staging (`backup` → `restore`) vor dem ersten echten Upgrade unbedingt einmal durchführen.
+
+### 5.1 Erste Schritte & Todos für die ersten Tests (8.2.1 → 8.2.9)
+
+Bevor später das große Major-Upgrade auf PrestaShop 9.x ansteht, empfiehlt sich als **Phase 1** das direkte Patch-Upgrade von **8.2.1 auf 8.2.9** (aktuellstes 8.2-Sicherheitsrelease):
+
+- [ ] **1. `.env` auf dem Server ergänzen (`staging/helper/.env` & `production/helper/.env`):**
+  - `PROD_DIR=/home/docutife/www/production`
+  - `STAGING_DIR=/home/docutife/www/staging`
+  - `BACKUP_DIR=/home/docutife/www/backups`
+  - `SMOKE_HTTP_AUTH="user:pass"` (Basic-Auth von Staging für die automatischen Smoke-Tests)
+  - Optional: `UPGRADE_PRESERVE_FILES=".htaccess robots.txt img/.htaccess localization/CLDR/core/common/main/de.xml localization/CLDR/core/common/main/de_CH.xml"` (falls die Schweizer CLDR-Zahlenformatierung in den XML-Dateien beim Upgrade automatisch erhalten bleiben soll)
+- [ ] **2. ThemeForest-ZIP auf dem Server ablegen (optional schon für Phase 1, Pflicht für Phase 2):**
+  - `themeforest-…-warehouse-….zip` unverändert nach `/home/docutife/www/backups/ps-upgrade/themes/` legen und `./ps-upgrade.sh theme-index` ausführen.
+- [ ] **3. Umgebungserkennung prüfen (`./ps-upgrade.sh info` & `./ps-upgrade.sh versions`):**
+  - Kontrollieren, dass auf Hostpoint automatisch `php-legacy` (PHP 8.2, passend zur Web-PHP 8.2) gewählt wird.
+- [ ] **4. Update Assistant (`autoupgrade`) aktualisieren:**
+  - Aktuell ist im Repo `v7.6.5` installiert, PrestaShop empfiehlt `v7.6.6`:
+    ```bash
+    ./ps-upgrade.sh autoupgrade-update
+    ```
+- [ ] **5. Vorab-Check für 8.2.9 auf Staging ausführen (`./ps-upgrade.sh check --to=8.2.9`):**
+  - **Hinweis zur PHP-Warnung (⚠️):** PrestaShop 8.2.x deklariert offiziell `php_max_version = 8.1`. Da der Shop bereits unter PHP 8.2 läuft, stuft das Toolkit dies bewusst als nicht-blockierende Warnung (⚠️) ein (auch `update:check-requirements` meldet das nur als Hinweis).
+  - **Hinweis zu geänderten Core-Dateien (⚠️ Core-Integrität):**
+    - `classes/Validate.php` und `admin_.../customer_threads/helpers/view/view.tpl`: Die damals manuell eingespielten Security-Fixes (`mode => strict`, XSS-Escaping, RLO/Event-Regex) sind in **8.2.9 bereits offiziell im Core enthalten** (plus `Validate::isCleanSVG()`). Sie können beim Upgrade gefahrlos durch die 8.2.9-Dateien ersetzt werden.
+    - `classes/PaymentModule.php` (pCon-OBX-Text in `order_conf`) und `src/.../ProductCombinationFilters.php` + `CombinationController.php` (Kombinationen-Limit 50): Vor dem Upgrade entweder in ein Override/Modul auslagern oder nach dem Upgrade gezielt prüfen, da 8.2.9 diese Core-Dateien aktualisiert (`PaymentModule.php` erhält in 8.2.9 u.a. `OrderCreationLock` & `CartRuleQuantityReserver`).
+- [ ] **6. Einmaliger Backup- & Restore-Trockentest auf Staging:**
+  - `./ps-upgrade.sh backup` → `./ps-upgrade.sh restore latest` ausführen, um den Ernstfall einmal komplett durchgespielt zu haben.
+- [ ] **7. Patch-Upgrade `8.2.1 → 8.2.9` auf Staging durchführen:**
+  - `./ps-upgrade.sh upgrade --to=8.2.9`
+  - Anschließend im Browser testen (Warenkorb, Checkout, PostFinance, pCon-/USM-Konfiguratoren, Bestell-E-Mails, Back-Office) und PrestaShop-Cache im Back-Office leeren.
+- [ ] **8. Sicherheitsupdate `revsliderprestashop` einspielen:**
+  - Im Warehouse-Gesamtpaket liegt `revsliderprestashop` in Version `6.2.22.6` (`security release`, installiert ist `6.2.22.5`) unter `Prestashop 8_x - theme 4.7.x/modules/revsliderprestashop.zip`.
 
 ---
 
