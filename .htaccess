@@ -1,3 +1,17 @@
+
+# PS Upgrade Toolkit Start
+# Allow env-check.php without Basic Auth (protected by ENV_CHECK_TOKEN, used by ps-upgrade.sh)
+<Files "env-check.php">
+    <IfModule mod_authz_core.c>
+        Require all granted
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Allow from all
+        Satisfy any
+    </IfModule>
+</Files>
+# PS Upgrade Toolkit End
 # Sync Script Auth Bypass Start
 Options -Indexes
 
@@ -24,17 +38,3 @@ Options -Indexes
     </IfModule>
 </FilesMatch>
 # Sync Script Auth Bypass End
-
-# PS Upgrade Toolkit Start
-# Allow env-check.php without Basic Auth (protected by ENV_CHECK_TOKEN, used by ps-upgrade.sh)
-<Files "env-check.php">
-    <IfModule mod_authz_core.c>
-        Require all granted
-    </IfModule>
-    <IfModule !mod_authz_core.c>
-        Order allow,deny
-        Allow from all
-        Satisfy any
-    </IfModule>
-</Files>
-# PS Upgrade Toolkit End
