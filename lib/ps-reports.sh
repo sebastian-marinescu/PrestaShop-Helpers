@@ -373,7 +373,8 @@ check_modules() {
     if [ -n "$xml" ] && [ -f "$xml" ]; then
         native=" $(tool xml-dirs "$xml" modules | tr '\n' ' ') "
     fi
-    local active new_incompat=() already=() missing=() checked=0
+    theme_index_load
+    local active new_incompat=() staged_updates=() already=() missing=() checked=0
     active="$(db_query "SELECT name FROM ${DB_PREFIX}module WHERE active=1 ORDER BY name" 2>/dev/null)"
     for m in $active; do
         case "$native" in *" $m "*) continue ;; esac
@@ -381,15 +382,33 @@ check_modules() {
         checked=$((checked + 1))
         local main="$PS_ROOT/modules/$m/$m.php"
         if [ ! -f "$main" ]; then missing+=("$m"); continue; fi
-        local max=""
+        local max="" inst=""
+        inst="$(tool module-info "$main" | sed -n 's/^version=//p')"
         max="$(tool module-info "$main" | sed -n 's/^max=//p')"
         [ -z "$max" ] || [ "$max" = "_PS_VERSION_" ] && continue
         if vercmp "$target" '>' "$max"; then
-            if vercmp "$PS_VERSION" '>' "$max"; then already+=("$m (max ${max})")
-            else new_incompat+=("$m (max ${max})"); fi
+            local type n v from to cache src pkg_v="" pkg_src=""
+            while IFS='|' read -r type n v from to cache src; do
+                [ "$type" = "module" ] && [ "$n" = "$m" ] || continue
+                [ -n "$from" ] && vercmp "$target" '<' "$from" && continue
+                [ -n "$to" ] && [ "$to" != "_PS_VERSION_" ] && vercmp "$target" '>' "$to" && continue
+                if [ -z "$inst" ] || vercmp "$v" '>' "$inst"; then
+                    pkg_v="$v"; pkg_src="$src"; break
+                fi
+            done < <(theme_index_entries)
+            if [ -n "$pkg_v" ]; then
+                staged_updates+=("$m (${inst:-?} → ${pkg_v}, max ${max} → kompatibles Paket in themes/: ${pkg_src})")
+            elif vercmp "$PS_VERSION" '>' "$max"; then
+                already+=("$m (max ${max})")
+            else
+                new_incompat+=("$m (max ${max})")
+            fi
         fi
     done
     detail "   ${checked} aktive Nicht-Core-Module geprüft."
+    if [ "${#staged_updates[@]}" -gt 0 ]; then
+        for m in "${staged_updates[@]}"; do status "🟢" "Modul ${m}" 1; done
+    fi
     if [ "${#new_incompat[@]}" -gt 0 ]; then
         warning "${#new_incompat[@]} Module sind laut ps_versions_compliancy NICHT für ${target} freigegeben"
         for m in "${new_incompat[@]}"; do status "🟠" "Modul ${m}" 1; done
@@ -631,12 +650,17 @@ report_child_theme() {
             else
                 local merge_hint="" merge_cmd=""
                 if [ -z "$loc_note" ] && have git && [ -f "$child_dir/$rel" ]; then
-                    if git merge-file -p "$child_dir/$rel" "$old_f" "$new_f" >/dev/null 2>&1; then
+                    local mc="$PSU_TMP/m_child" mo="$PSU_TMP/m_old" mn="$PSU_TMP/m_new"
+                    tr -d '\r' < "$child_dir/$rel" > "$mc" 2>/dev/null
+                    tr -d '\r' < "$old_f" > "$mo" 2>/dev/null
+                    tr -d '\r' < "$new_f" > "$mn" 2>/dev/null
+                    if git merge-file -p "$mc" "$mo" "$mn" >/dev/null 2>&1; then
                         merge_hint=" [3-Wege-Merge konfliktfrei möglich]"
                         merge_cmd="git merge-file $child_dir/$rel $(theme_src_label old "$cmp_logical") $(theme_src_label new "$cmp_logical")"
                     else
                         merge_hint=" [3-Wege-Merge hat Konflikte – manuell prüfen]"
                     fi
+                    rm -f "$mc" "$mo" "$mn"
                 fi
                 n_orange=$((n_orange + 1)); status "🟠" "${rel} – ${what} geändert${loc_note} → manuell prüfen${merge_hint}" 1
                 local cmd diff_out
@@ -717,17 +741,20 @@ report_theme_modules() {
 report_theme_package_updates() {
     theme_index_load
     [ "${#THEME_INDEX[@]}" -gt 0 ] || { status "ℹ️" "Keine Theme-Pakete in ${PSU_HOME}/themes/ hinterlegt."; return; }
-    local type n v from to cache src inst found=0
+    local type n v from to cache src inst found=0 seen=" "
     while IFS='|' read -r type n v from to cache src; do
+        case "$seen" in *" ${type}:${n}:${v} "*) continue ;; esac
         if [ "$type" = "module" ] && [ -f "$PS_ROOT/modules/$n/$n.php" ]; then
             inst="$(tool module-info "$PS_ROOT/modules/$n/$n.php" | sed -n 's/^version=//p')"
             if [ -n "$inst" ] && [ -n "$v" ] && vercmp "$v" '>' "$inst"; then
+                seen="${seen}${type}:${n}:${v} "
                 found=1
                 status "⚠️" "Modul-Update im Paket: ${n} ${inst} → ${v} (${src})" 1
                 CHECK_WARNINGS+=("Modul-Update im Theme-Paket: ${n} ${inst} → ${v}")
             fi
         elif [ "$type" = "theme" ] && [ "$n" = "$THEME_PARENT" ] && [ -n "$PARENT_VERSION" ] && [ -n "$from" ] && [ -n "${PARENT_FROM:-}" ]; then
             if [ "$(ver_major "$from")" = "$(ver_major "$PARENT_FROM")" ] && vercmp "$v" '>' "$PARENT_VERSION"; then
+                seen="${seen}${type}:${n}:${v} "
                 found=1
                 status "ℹ️" "Theme-Update in derselben Linie verfügbar: ${n} ${PARENT_VERSION} → ${v} (${src})" 1
             fi
